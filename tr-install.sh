@@ -227,8 +227,8 @@ install_transmission() {
         TR_VERSION=$(git describe --tags 2>/dev/null | sed 's/^v//' | head -1 || echo "trunk")
     else
         info "下载 Transmission-${TR_VERSION}..."
+        # 3.00 release tarball 缺少 third-party 子模块, 必须用 git clone --recurse-submodules
         # 3.00 的 tag 不带 v 前缀, 4.0+ 带 v 前缀
-        # 尝试两种 tag 格式, 并优先使用 codeload archive
         local tag_candidates=()
         if [[ "${TR_VERSION}" == 3.* ]]; then
             tag_candidates=("${TR_VERSION}" "v${TR_VERSION}")
@@ -237,40 +237,24 @@ install_transmission() {
         fi
 
         local tag_name=""
-        local archive_url=""
         for t in "${tag_candidates[@]}"; do
-            # 测试 codeload archive 是否存在
-            archive_url="https://codeload.github.com/transmission/transmission/tar.gz/refs/tags/${t}"
-            echo "[DEBUG] 尝试 tag: $t -> $archive_url" >&2
-            if curl -sfL --max-time 15 -o /dev/null -r 0-0 "$archive_url" 2>/dev/null; then
+            echo "[DEBUG] 尝试 tag: $t" >&2
+            if git ls-remote --exit-code --heads origin "refs/tags/$t" "https://github.com/transmission/transmission.git" 2>/dev/null; then
                 tag_name="$t"
-                echo "[DEBUG] 找到可用 tag: $tag_name" >&2
                 break
             fi
         done
 
         if [[ -z "$tag_name" ]]; then
-            warn "无法确定 tag 名，默认使用 ${TR_VERSION}"
             tag_name="${TR_VERSION}"
-            archive_url="https://codeload.github.com/transmission/transmission/tar.gz/refs/tags/${tag_name}"
         fi
 
-        local archive_file="/tmp/transmission-${TR_VERSION}.tar.gz"
-        info "下载源码: $archive_url"
-        if wget -q --show-progress -O "$archive_file" "$archive_url" 2>/dev/null; then
-            tar -xzf "$archive_file" -C /tmp
-            # codeload 解压后目录名为 transmission-<tag>
-            if [[ -d "/tmp/transmission-${tag_name}" ]]; then
-                tr_src="/tmp/transmission-${tag_name}"
-            elif [[ -d "/tmp/transmission-${TR_VERSION}" ]]; then
-                tr_src="/tmp/transmission-${TR_VERSION}"
-            else
-                # 查找解压后的目录
-                tr_src=$(find /tmp -maxdepth 1 -type d -name "transmission-*" 2>/dev/null | head -1)
-            fi
-            echo "[DEBUG] 解压目录: $tr_src" >&2
-        else
-            error "源码下载失败: $archive_url"
+        info "Git clone (含子模块, 可能较慢)..."
+        git clone --recurse-submodules --depth=1 --branch "${tag_name}" \
+            "https://github.com/transmission/transmission.git" "$tr_src" 2>&1 | tail -5
+
+        if [[ ! -d "$tr_src" ]]; then
+            error "源码下载失败"
             exit 1
         fi
     fi
