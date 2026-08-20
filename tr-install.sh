@@ -137,7 +137,7 @@ detect_os() {
         PKG_INSTALL="apt-get install -y"
         PACKAGES="build-essential pkg-config libssl-dev git cmake intltool \
                    libcurl4-openssl-dev libglib2.0-dev libevent-dev \
-                   libminiupnpc-dev libutfccode-dev gettext zip"
+                   libminiupnpc-dev libutfcpp-dev gettext zip"
     elif [[ -f /etc/redhat-release || -f /etc/centos-release ]]; then
         if grep -qiE "rocky|almalinux" /etc/redhat-release 2>/dev/null; then
             OS="rhel"
@@ -148,7 +148,7 @@ detect_os() {
         PKG_INSTALL="yum install -y"
         PACKAGES="gcc gcc-c++ make pkgconfig openssl-devel git cmake intltool \
                    libcurl-devel glib2-devel libevent-devel miniupnpc-devel \
-                   utfcgettext gettext zip"
+                   libutfcpp-devel gettext zip"
     elif [[ -f /etc/alpine-release ]]; then
         OS="alpine"
         PKG_UPDATE="apk update"
