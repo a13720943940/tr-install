@@ -223,7 +223,7 @@ install_transmission() {
         info "从 trunk 克隆源码 (最新版本)..."
         git clone --depth=1 "https://github.com/transmission/transmission.git" "$tr_src"
         cd "$tr_src"
-        TR_VERSION=$(git describe --tags 2>/dev/null || echo "trunk")
+        TR_VERSION=$(git describe --tags 2>/dev/null | sed 's/^v//' | head -1 || echo "trunk")
     else
         info "下载 Transmission-${TR_VERSION}..."
         local tag_name="v${TR_VERSION}"
@@ -242,8 +242,8 @@ install_transmission() {
                 tr_src="/tmp/transmission-${TR_VERSION}"
             else
                 warn "备用地址也失败，尝试从 Git 克隆..."
-                git clone --depth=1 --branch "${tag_name}" \
-                    "https://github.com/transmission/transmission.git" "$tr_src"
+                git clone --depth=1 "https://github.com/transmission/transmission.git" "$tr_src"
+                (cd "$tr_src" && git fetch --depth=1 origin "${tag_name}" && git checkout "${tag_name}")
             fi
         fi
     fi
