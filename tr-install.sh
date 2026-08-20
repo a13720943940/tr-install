@@ -227,25 +227,69 @@ install_transmission() {
     else
         info "下载 Transmission-${TR_VERSION}..."
         local tag_name="v${TR_VERSION}"
-        local tarball="https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.xz"
 
-        if wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.xz" "$tarball" 2>/dev/null; then
-            tar -xJf "/tmp/transmission-${TR_VERSION}.tar.xz" -C /tmp
-            tr_src="/tmp/transmission-${TR_VERSION}"
-        else
-            # fallback: tar.gz 格式
-            warn "官方 tarball 下载失败，尝试 tar.gz 格式..."
-            rm -f "/tmp/transmission-${TR_VERSION}.tar.xz"
-            local fallback_url="https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.gz"
-            if wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.gz" "$fallback_url" 2>/dev/null; then
+        # 方法1: 从 GitHub Releases API 获取真实 tarball URL
+        local api_url="https://api.github.com/repos/transmission/transmission/releases/tags/${tag_name}"
+        local download_url=""
+
+        if command -v curl &>/dev/null; then
+            download_url=$(curl -sfL --max-time 30 "$api_url" \
+                | python3 -c "
+import sys, json, re
+try:
+    data = json.load(sys.stdin)
+    assets = data.get('assets', [])
+    for a in assets:
+        name = a.get('name', '')
+        if re.match(r'transmission-[\d.]+\.tar\.(xz|gz)', name):
+            print(a['browser_download_url'])
+            break
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null)
+        fi
+
+        if [[ -n "$download_url" ]]; then
+            info "从 GitHub Releases 下载: $(basename "$download_url")"
+            wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.xz" "$download_url" || \
+            wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.gz" "$download_url" 2>/dev/null || true
+            if [[ -f "/tmp/transmission-${TR_VERSION}.tar.xz" ]]; then
+                tar -xJf "/tmp/transmission-${TR_VERSION}.tar.xz" -C /tmp
+                tr_src="/tmp/transmission-${TR_VERSION}"
+            elif [[ -f "/tmp/transmission-${TR_VERSION}.tar.gz" ]]; then
                 tar -xzf "/tmp/transmission-${TR_VERSION}.tar.gz" -C /tmp
                 tr_src="/tmp/transmission-${TR_VERSION}"
-            else
-                warn "备用地址也失败，尝试从 Git 克隆并 checkout tag..."
-                git clone --depth=1 --filter=blob:none \
-                    "https://github.com/transmission/transmission.git" "$tr_src"
-                (cd "$tr_src" && git checkout "${tag_name}")
             fi
+        fi
+
+        # 方法2: API 失败则尝试直接猜测常见 URL
+        if [[ ! -d "$tr_src" ]]; then
+            warn "API 获取失败，尝试直接 URL..."
+            for url in \
+                "https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.xz" \
+                "https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.gz"; do
+                if wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.$(echo $url | grep -o 'tar\.[a-z]*' | head -1)" "$url" 2>/dev/null; then
+                    local ext="$(echo $url | grep -o 'tar\.[a-z]*' | head -1)"
+                    local archive="/tmp/transmission-${TR_VERSION}.${ext}"
+                    if [[ "$ext" == "tar.xz" ]]; then
+                        tar -xJf "$archive" -C /tmp
+                    else
+                        tar -xzf "$archive" -C /tmp
+                    fi
+                    rm -f "$archive"
+                    tr_src="/tmp/transmission-${TR_VERSION}"
+                    break
+                fi
+            done
+        fi
+
+        # 方法3: 全量 git clone (最后兜底)
+        if [[ ! -d "$tr_src" ]]; then
+            warn "全部下载失败，使用 git clone (可能较慢)..."
+            git clone "https://github.com/transmission/transmission.git" "$tr_src"
+            (cd "$tr_src" && git checkout "${tag_name}")
         fi
     fi
 
