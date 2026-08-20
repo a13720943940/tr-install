@@ -45,6 +45,7 @@ TR_BIND_ADDR="0.0.0.0"
 SYSTEM_USER=""
 INSTALL_PREFIX="/usr/local"
 TRUNK_BUILD=0   # 从 trunk 源码编译
+TR_WEB_CONTROL=0  # 安装 transmission-web-control 美化界面
 
 # ─── 帮助 ─────────────────────────────────────────────────────────────────────
 usage() {
@@ -68,6 +69,7 @@ ${BOLD}可选参数:${NC}
   -b, --bind <地址>        绑定地址 (默认: 0.0.0.0)
   -x, --ssl                启用 SSL (自签名证书)
   -k, --trunk              从 trunk 源码编译 (最新特性)
+  -w, --web-control        安装 transmission-web-control 美化界面
   -v, --verbose            显示详细输出
   -h, --help               显示此帮助
 
@@ -97,6 +99,7 @@ while [[ $# -gt 0 ]]; do
         -b|--bind)          TR_BIND_ADDR="$2";  shift 2 ;;
         -x|--ssl)           TR_USE_SSL=1;       shift ;;
         -k|--trunk)         TRUNK_BUILD=1;      shift ;;
+        -w|--web-control)   TR_WEB_CONTROL=1;   shift ;;
         -v|--verbose)       TR_VERBOSE=1;       shift ;;
         -h|--help)          usage ;;
         *)                  error "未知参数: $1"; usage ;;
@@ -447,6 +450,97 @@ EOF
     info "Systemd 服务配置完成"
 }
 
+# ─── 安装 transmission-web-control 美化界面 ────────────────────────────────────
+install_web_control() {
+    step "安装 transmission-web-control 美化界面"
+
+    # 查找 Web 目录
+    local tr_web_dir=""
+    local possible_paths=(
+        "/usr/share/transmission/web"
+        "/usr/local/share/transmission/web"
+        "/var/lib/transmission/web"
+        "/usr/share/transmission/public_html"
+    )
+
+    for path in "${possible_paths[@]}"; do
+        if [[ -d "$path" ]]; then
+            tr_web_dir="$path"
+            break
+        fi
+    done
+
+    # 尝试通过 transmission-daemon 二进制推断
+    if [[ -z "$tr_web_dir" ]]; then
+        local tr_bin
+        tr_bin=$(command -v transmission-daemon 2>/dev/null || echo "")
+        if [[ -n "$tr_bin" ]]; then
+            tr_web_dir=$(dirname "$tr_bin")/../share/transmission/web
+            [[ ! -d "$tr_web_dir" ]] && tr_web_dir=""
+        fi
+    fi
+
+    if [[ -z "$tr_web_dir" ]]; then
+        warn "无法自动找到 Transmission Web 目录，跳过 Web Control 安装"
+        warn "请手动安装: wget https://github.com/ronggang/transmission-web-control/raw/master/release/install-tr-control-cn.sh && sudo bash install-tr-control-cn.sh"
+        return 0
+    fi
+
+    info "找到 Web 目录: $tr_web_dir"
+
+    # 备份原版界面
+    if [[ -f "${tr_web_dir}/index.html" ]] && [[ ! -f "${tr_web_dir}/index.original.html" ]]; then
+        cp "${tr_web_dir}/index.html" "${tr_web_dir}/index.original.html"
+        info "已备份原版 Web UI → index.original.html"
+    fi
+
+    # 下载安装脚本并执行 (自动模式)
+    local install_script="/tmp/install-tr-control-cn.sh"
+    info "下载 transmission-web-control 安装脚本..."
+
+    if wget -q --no-check-certificate -O "$install_script" \
+        "https://github.com/ronggang/transmission-web-control/raw/master/release/install-tr-control-cn.sh"; then
+        chmod +x "$install_script"
+        # 自动模式: 静默安装到自动检测到的目录
+        info "执行安装脚本 (自动模式)..."
+        bash "$install_script" "auto" 2>&1 | while read -r line; do
+            [[ "$TR_VERBOSE" == "1" ]] && echo "  $line"
+        done
+        # 手动指定目录安装 (静默)
+        if ! grep -q "Installation Completed" <<<"$(cat /tmp/tr-wc-log.txt 2>/dev/null)"; then
+            bash "$install_script" "auto" "$tr_web_dir" 2>/dev/null || true
+        fi
+        rm -f "$install_script"
+    else
+        # fallback: 直接下载打包文件
+        warn "安装脚本下载失败，尝试直接下载 Web UI 包..."
+        local wc_src="/tmp/tr-web-control.tar.gz"
+        if wget -q --no-check-certificate -O "$wc_src" \
+            "https://github.com/ronggang/transmission-web-control/raw/master/release/src.tar.gz"; then
+            local wc_tmp="/tmp/tr-web-control"
+            rm -rf "$wc_tmp"
+            mkdir -p "$wc_tmp"
+            tar -xzf "$wc_src" -C "$wc_tmp"
+
+            # 复制文件到 Web 目录
+            if [[ -d "${wc_tmp}/transmission-web-control/src" ]]; then
+                cp -rf "${wc_tmp}/transmission-web-control/src/"* "${tr_web_dir}/"
+            elif [[ -d "${wc_tmp}/src" ]]; then
+                cp -rf "${wc_tmp}/src/"* "${tr_web_dir}/"
+            fi
+            rm -rf "$wc_tmp" "$wc_src"
+        else
+            warn "Web UI 包下载失败，请稍后手动安装"
+            return 0
+        fi
+    fi
+
+    # 设置权限
+    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "${tr_web_dir}" 2>/dev/null || true
+
+    info "✅ transmission-web-control 安装完成"
+}
+
 # ─── 防火墙 ───────────────────────────────────────────────────────────────────
 configure_firewall() {
     step "配置防火墙"
@@ -513,6 +607,9 @@ show_summary() {
     if [[ "$TR_USE_SSL" == "1" ]]; then
     echo -e "  ${GREEN}SSL:${NC}          已启用 (自签名证书)"
     fi
+    if [[ "$TR_WEB_CONTROL" == "1" ]]; then
+    echo -e "  ${GREEN}Web UI:${NC}       transmission-web-control (美化界面)"
+    fi
     echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
     echo -e "  ${CYAN}常用命令:${NC}"
@@ -538,7 +635,7 @@ main() {
     echo "   ██║  ██║███████╗   ██║   ██║  ██║╚██████╔╝██████╔╝██║  ██║██║  ██║"
     echo "   ╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝"
     echo -e "${NC}"
-    echo -e "   ${BOLD}Transmission-daemon 一键安装脚本 v1.0.0${NC}"
+    echo -e "   ${BOLD}Transmission-daemon 一键安装脚本 v1.1.0${NC}"
     echo -e "   版本: ${TR_VERSION} | RPC端口: ${TR_RPC_PORT} | 种子端口: ${TR_PEER_PORT}"
     echo -e "   下载目录: ${TR_DOWNLOAD_DIR}"
     echo
@@ -553,6 +650,7 @@ main() {
     setup_directories
     generate_settings
     create_systemd_service
+    [[ "$TR_WEB_CONTROL" == "1" ]] && install_web_control
     configure_firewall
     start_service
     show_summary
