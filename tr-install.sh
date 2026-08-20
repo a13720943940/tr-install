@@ -241,9 +241,10 @@ install_transmission() {
                 tar -xzf "/tmp/transmission-${TR_VERSION}.tar.gz" -C /tmp
                 tr_src="/tmp/transmission-${TR_VERSION}"
             else
-                warn "备用地址也失败，尝试从 Git 克隆..."
-                git clone --depth=1 "https://github.com/transmission/transmission.git" "$tr_src"
-                (cd "$tr_src" && git fetch --depth=1 origin "${tag_name}" && git checkout "${tag_name}")
+                warn "备用地址也失败，尝试从 Git 克隆并 checkout tag..."
+                git clone --depth=1 --filter=blob:none \
+                    "https://github.com/transmission/transmission.git" "$tr_src"
+                (cd "$tr_src" && git checkout "${tag_name}")
             fi
         fi
     fi
