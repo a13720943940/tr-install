@@ -460,6 +460,7 @@ After=network.target
 Type=simple
 User=${SYSTEM_USER}
 Group=${SYSTEM_USER}
+Environment=TRANSMISSION_WEB_HOME=${INSTALL_PREFIX}/share/transmission/public_html
 ExecStart=${INSTALL_PREFIX}/bin/transmission-daemon --foreground --config-dir /home/${SYSTEM_USER}/.config/transmission
 Restart=on-failure
 RestartSec=10
@@ -486,10 +487,13 @@ install_web_control() {
     # 查找 Web 目录
     local tr_web_dir=""
     local possible_paths=(
-        "/usr/share/transmission/web"
+        "${INSTALL_PREFIX}/share/transmission/public_html"
+        "${INSTALL_PREFIX}/share/transmission/web"
+        "/usr/local/share/transmission/public_html"
         "/usr/local/share/transmission/web"
         "/var/lib/transmission/web"
         "/usr/share/transmission/public_html"
+        "/usr/share/transmission/web"
     )
 
     for path in "${possible_paths[@]}"; do
@@ -504,7 +508,8 @@ install_web_control() {
         local tr_bin
         tr_bin=$(command -v transmission-daemon 2>/dev/null || echo "")
         if [[ -n "$tr_bin" ]]; then
-            tr_web_dir=$(dirname "$tr_bin")/../share/transmission/web
+            tr_web_dir=$(dirname "$tr_bin")/../share/transmission/public_html
+            [[ ! -d "$tr_web_dir" ]] && tr_web_dir=$(dirname "$tr_bin")/../share/transmission/web
             [[ ! -d "$tr_web_dir" ]] && tr_web_dir=""
         fi
     fi
