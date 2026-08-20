@@ -433,7 +433,7 @@ SSLOPTS
     "start-added-torrents": true,
     "trash-original-torrent-files": false,
     "umask": 18,
-    "upload-slots-per-torrent": 14
+    "upload-slots-per-torrent": 14,
 ${ssl_opts}
     "download-dir": "${TR_DOWNLOAD_DIR}"
 }
@@ -457,36 +457,23 @@ Documentation=man:transmission-daemon(1)
 After=network.target
 
 [Service]
-Type=notify
+Type=simple
 User=${SYSTEM_USER}
 Group=${SYSTEM_USER}
-ExecStart=${INSTALL_PREFIX}/bin/transmission-daemon \
-    --foreground \
-    --logfile /var/log/transmission.log \
-    --config-dir /home/${SYSTEM_USER}/.config/transmission
+ExecStart=${INSTALL_PREFIX}/bin/transmission-daemon --foreground --config-dir /home/${SYSTEM_USER}/.config/transmission
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65535
 LimitNPROC=65535
-
-# 日志
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=transmission-daemon
-
-# 硬限制
-ProtectSystem=full
-ProtectHome=true
-NoNewPrivileges=true
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    # 创建日志文件
-    touch /var/log/transmission.log
-    chmod 644 /var/log/transmission.log
+    # 创建日志目录 (使用 journal, 无需日志文件)
 
     systemctl daemon-reload
     info "Systemd 服务配置完成"
