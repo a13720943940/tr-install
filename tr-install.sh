@@ -13,7 +13,7 @@
 #   -t, --peer-port     种子端口 (默认: 51413)
 #   -d, --download-dir  下载目录 (默认: /home/<user>/downloads)
 #   -m, --incomplete    未完成下载目录 (默认: /home/<user>/downloads/incomplete)
-#   -q, --tr-version    Transmission 版本 (默认: 3.00)
+#   -q, --tr-version    Transmission 版本 (默认: 4.0.5)
 #   -v, --verbose       详细输出
 #   -x, --ssl           启用 SSL
 #   -h, --help          显示帮助
@@ -39,7 +39,7 @@ TR_PEER_PORT=51413
 TR_DOWNLOAD_DIR=""
 TR_INCOMPLETE_DIR=""
 TR_INCOMPLETE_ENABLED=1
-TR_VERSION="3.00"
+TR_VERSION="4.0.5"
 TR_VERBOSE=0
 TR_USE_SSL=0
 TR_BIND_ADDR="0.0.0.0"
@@ -65,7 +65,7 @@ ${BOLD}可选参数:${NC}
   -t, --peer-port <端口>   种子监听端口 (默认: 51413)
   -d, --download-dir <路径>  下载目录 (默认: /home/<用户>/downloads)
   -m, --incomplete <路径>  未完成目录 (默认: /home/<用户>/downloads/incomplete)
-  -q, --tr-version <版本>  Transmission 版本 (默认: 3.00)
+  -q, --tr-version <版本>  Transmission 版本 (默认: 4.0.5)
   -i, --install-prefix <路径> 安装前缀 (默认: /usr/local)
   -b, --bind <地址>        绑定地址 (默认: 0.0.0.0)
   -x, --ssl                启用 SSL (自签名证书)
