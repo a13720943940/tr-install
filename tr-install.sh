@@ -46,7 +46,7 @@ TR_BIND_ADDR="0.0.0.0"
 SYSTEM_USER=""
 INSTALL_PREFIX="/usr/local"
 TRUNK_BUILD=0   # 从 trunk 源码编译
-TR_WEB_CONTROL=0  # 安装 transmission-web-control 美化界面
+TR_WEB_CONTROL=0  # 安装 TrguiNG 美化界面
 
 # ─── 帮助 ─────────────────────────────────────────────────────────────────────
 usage() {
@@ -70,7 +70,7 @@ ${BOLD}可选参数:${NC}
   -b, --bind <地址>        绑定地址 (默认: 0.0.0.0)
   -x, --ssl                启用 SSL (自签名证书)
   -k, --trunk              从 trunk 源码编译 (最新特性)
-  -w, --web-control        安装 transmission-web-control 美化界面
+  -w, --web-control        安装 TrguiNG 美化界面 (现代 React Web UI)
   -v, --verbose            显示详细输出
   -h, --help               显示此帮助
 
@@ -100,7 +100,7 @@ while [[ $# -gt 0 ]]; do
         -b|--bind)          TR_BIND_ADDR="$2";  shift 2 ;;
         -x|--ssl)           TR_USE_SSL=1;       shift ;;
         -k|--trunk)         TRUNK_BUILD=1;      shift ;;
-        -w|--web-control)   TR_WEB_CONTROL=1;   shift ;;
+        -w|--web-control)   TR_WEB_CONTROL=1;   shift ;;  # 保留向后兼容
         -v|--verbose)       TR_VERBOSE=1;       shift ;;
         -h|--help)          usage ;;
         *)                  error "未知参数: $1"; usage ;;
@@ -480,47 +480,18 @@ EOF
     info "Systemd 服务配置完成"
 }
 
-# ─── 安装 transmission-web-control 美化界面 ────────────────────────────────────
+# ─── 安装 TrguiNG 美化界面 ────────────────────────────────────────────────────
+# TrguiNG: 现代 React Web UI for Transmission
+# https://github.com/openscopeproject/TrguiNG
+# 4.0.5 默认查找 public_html 目录, 3.x 用 web 目录
 install_web_control() {
-    step "安装 transmission-web-control 美化界面"
+    step "安装 TrguiNG Web UI"
 
-    # 查找 Web 目录
-    local tr_web_dir=""
-    local possible_paths=(
-        "${INSTALL_PREFIX}/share/transmission/public_html"
-        "${INSTALL_PREFIX}/share/transmission/web"
-        "/usr/local/share/transmission/public_html"
-        "/usr/local/share/transmission/web"
-        "/var/lib/transmission/web"
-        "/usr/share/transmission/public_html"
-        "/usr/share/transmission/web"
-    )
+    # 确定 web 目录 (4.0.5 用 public_html, 3.x 用 web)
+    local tr_web_dir="${INSTALL_PREFIX}/share/transmission/public_html"
+    mkdir -p "$tr_web_dir"
 
-    for path in "${possible_paths[@]}"; do
-        if [[ -d "$path" ]]; then
-            tr_web_dir="$path"
-            break
-        fi
-    done
-
-    # 尝试通过 transmission-daemon 二进制推断
-    if [[ -z "$tr_web_dir" ]]; then
-        local tr_bin
-        tr_bin=$(command -v transmission-daemon 2>/dev/null || echo "")
-        if [[ -n "$tr_bin" ]]; then
-            tr_web_dir=$(dirname "$tr_bin")/../share/transmission/public_html
-            [[ ! -d "$tr_web_dir" ]] && tr_web_dir=$(dirname "$tr_bin")/../share/transmission/web
-            [[ ! -d "$tr_web_dir" ]] && tr_web_dir=""
-        fi
-    fi
-
-    if [[ -z "$tr_web_dir" ]]; then
-        warn "无法自动找到 Transmission Web 目录，跳过 Web Control 安装"
-        warn "请手动安装: wget https://github.com/ronggang/transmission-web-control/raw/master/release/install-tr-control-cn.sh && sudo bash install-tr-control-cn.sh"
-        return 0
-    fi
-
-    info "找到 Web 目录: $tr_web_dir"
+    info "Web UI 安装目录: $tr_web_dir"
 
     # 备份原版界面
     if [[ -f "${tr_web_dir}/index.html" ]] && [[ ! -f "${tr_web_dir}/index.original.html" ]]; then
@@ -528,51 +499,69 @@ install_web_control() {
         info "已备份原版 Web UI → index.original.html"
     fi
 
-    # 下载安装脚本并执行 (自动模式)
-    local install_script="/tmp/install-tr-control-cn.sh"
-    info "下载 transmission-web-control 安装脚本..."
+    # 从 GitHub Releases 下载 TrguiNG web 包
+    local trguing_zip="/tmp/trguing-web.zip"
+    local trguing_tmp="/tmp/trguing-web"
+    local trguing_url="https://github.com/openscopeproject/TrguiNG/releases/latest/download/trguing-web-v1.5.1.zip"
 
-    if wget -q --no-check-certificate -O "$install_script" \
-        "https://github.com/ronggang/transmission-web-control/raw/master/release/install-tr-control-cn.sh"; then
-        chmod +x "$install_script"
-        # 自动模式: 静默安装到自动检测到的目录
-        info "执行安装脚本 (自动模式)..."
-        bash "$install_script" "auto" 2>&1 | while read -r line; do
-            [[ "$TR_VERBOSE" == "1" ]] && echo "  $line"
-        done
-        # 手动指定目录安装 (静默)
-        if ! grep -q "Installation Completed" <<<"$(cat /tmp/tr-wc-log.txt 2>/dev/null)"; then
-            bash "$install_script" "auto" "$tr_web_dir" 2>/dev/null || true
-        fi
-        rm -f "$install_script"
-    else
-        # fallback: 直接下载打包文件
-        warn "安装脚本下载失败，尝试直接下载 Web UI 包..."
-        local wc_src="/tmp/tr-web-control.tar.gz"
-        if wget -q --no-check-certificate -O "$wc_src" \
-            "https://github.com/ronggang/transmission-web-control/raw/master/release/src.tar.gz"; then
-            local wc_tmp="/tmp/tr-web-control"
-            rm -rf "$wc_tmp"
-            mkdir -p "$wc_tmp"
-            tar -xzf "$wc_src" -C "$wc_tmp"
+    # 尝试获取最新版本下载链接
+    local latest_url
+    latest_url=$(curl -sL "https://api.github.com/repos/openscopeproject/TrguiNG/releases/latest" 2>/dev/null | \
+        python3 -c "import json,sys; d=json.load(sys.stdin); [print(a[\'browser_download_url\']) for a in d.get(\'assets\',[]) if \'web\' in a[\'name\'].lower()]" 2>/dev/null | head -1)
+    [[ -n "$latest_url" ]] && trguing_url="$latest_url"
 
-            # 复制文件到 Web 目录
-            if [[ -d "${wc_tmp}/transmission-web-control/src" ]]; then
-                cp -rf "${wc_tmp}/transmission-web-control/src/"* "${tr_web_dir}/"
-            elif [[ -d "${wc_tmp}/src" ]]; then
-                cp -rf "${wc_tmp}/src/"* "${tr_web_dir}/"
-            fi
-            rm -rf "$wc_tmp" "$wc_src"
+    info "下载 TrguiNG Web UI..."
+    [[ "$TR_VERBOSE" == "1" ]] && echo "  URL: $trguing_url"
+
+    rm -rf "$trguing_tmp" "$trguing_zip"
+    if wget -q --no-check-certificate -O "$trguing_zip" "$trguing_url"; then
+        mkdir -p "$trguing_tmp"
+        if command -v unzip &>/dev/null; then
+            unzip -qo "$trguing_zip" -d "$trguing_tmp"
+        elif command -v python3 &>/dev/null; then
+            python3 -c "import zipfile; zipfile.ZipFile(\'$trguing_zip\').extractall(\'$trguing_tmp\')"
         else
-            warn "Web UI 包下载失败，请稍后手动安装"
-            return 0
+            if command -v jar &>/dev/null; then
+                (cd "$trguing_tmp" && jar xf "$trguing_zip")
+            else
+                warn "找不到 unzip/python3/jar，跳过 TrguiNG 安装"
+                warn "请手动下载 $trguing_url 并解压到 $tr_web_dir"
+                rm -rf "$trguing_tmp" "$trguing_zip"
+                return 0
+            fi
         fi
+
+        # 清空旧 web 文件并复制 TrguiNG
+        rm -rf "${tr_web_dir:?}/"*
+        # TrguiNG zip 解压后可能在子目录或根目录
+        if [[ -f "${trguing_tmp}/index.html" ]]; then
+            cp -rf "${trguing_tmp}/"* "${tr_web_dir}/"
+        else
+            # 查找含 index.html 的子目录
+            local sub_dir
+            sub_dir=$(find "$trguing_tmp" -name "index.html" -type f -print -quit 2>/dev/null | xargs dirname 2>/dev/null)
+            if [[ -n "$sub_dir" && -f "${sub_dir}/index.html" ]]; then
+                cp -rf "${sub_dir}/"* "${tr_web_dir}/"
+            else
+                warn "TrguiNG 包中未找到 index.html，跳过安装"
+                rm -rf "$trguing_tmp" "$trguing_zip"
+                return 0
+            fi
+        fi
+        rm -rf "$trguing_tmp" "$trguing_zip"
+    else
+        warn "TrguiNG 下载失败，请手动下载并解压到 $tr_web_dir"
+        warn "下载地址: https://github.com/openscopeproject/TrguiNG/releases"
+        rm -rf "$trguing_tmp" "$trguing_zip"
+        return 0
     fi
 
     # 设置权限
     chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "${tr_web_dir}" 2>/dev/null || true
+    chmod -R 755 "${tr_web_dir}" 2>/dev/null || true
 
-    info "✅ transmission-web-control 安装完成"
+    info "✅ TrguiNG Web UI 安装完成"
+    info "   访问地址: http://<服务器IP>:${TR_RPC_PORT}/transmission/web/"
 }
 
 # ─── 防火墙 ───────────────────────────────────────────────────────────────────
@@ -642,7 +631,7 @@ show_summary() {
     echo -e "  ${GREEN}SSL:${NC}          已启用 (自签名证书)"
     fi
     if [[ "$TR_WEB_CONTROL" == "1" ]]; then
-    echo -e "  ${GREEN}Web UI:${NC}       transmission-web-control (美化界面)"
+    echo -e "  ${GREEN}Web UI:${NC}       TrguiNG (现代 React Web UI)"
     fi
     echo -e "  ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
