@@ -3,8 +3,8 @@
 # Transmission 一键安装脚本
 # 支持: Debian 10+/Ubuntu 18.04+/CentOS 7+/Alpine
 # 用法:
-#   bash <(wget -qO- https://your-url/tr-install.sh) -u user -p pass [选项]
-#   chmod +x tr-install.sh && ./tr-install.sh -u user -p pass
+#   wget -qO tr-install.sh https://your-url/tr-install.sh && sudo bash tr-install.sh -u user -p pass [选项]
+#   (注: 某些系统不支持 bash <(wget...) 语法，请先下载再执行)
 #
 # 选项:
 #   -u, --user          RPC 用户名 (必填)
@@ -110,9 +110,9 @@ done
 SYSTEM_USER="${TR_USER//[^a-zA-Z0-9_]/}"
 SYSTEM_USER="${SYSTEM_USER:0:32}"
 
-# 默认下载目录
+# 默认下载目录 (与 qBittorrent jerry048 脚本保持一致: ~/qbittorrent/Downloads)
 if [[ -z "$TR_DOWNLOAD_DIR" ]]; then
-    TR_DOWNLOAD_DIR="/home/${SYSTEM_USER}/downloads"
+    TR_DOWNLOAD_DIR="/home/${SYSTEM_USER}/qbittorrent/Downloads"
 fi
 if [[ -z "$TR_INCOMPLETE_DIR" ]]; then
     TR_INCOMPLETE_DIR="${TR_DOWNLOAD_DIR}/incomplete"
@@ -637,7 +637,7 @@ main() {
     echo -e "${NC}"
     echo -e "   ${BOLD}Transmission-daemon 一键安装脚本 v1.1.0${NC}"
     echo -e "   版本: ${TR_VERSION} | RPC端口: ${TR_RPC_PORT} | 种子端口: ${TR_PEER_PORT}"
-    echo -e "   下载目录: ${TR_DOWNLOAD_DIR}"
+    echo -e "   下载目录: ${TR_DOWNLOAD_DIR}  (与 qBittorrent 同目录)"
     echo
 
     detect_os
