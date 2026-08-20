@@ -280,22 +280,33 @@ install_transmission() {
         exit 1
     fi
 
+    echo "[DEBUG] tr_src=$tr_src" >&2
+    echo "[DEBUG] 内容:" >&2
+    ls -la "$tr_src" 2>/dev/null | head -20 >&2
+
     cd "$tr_build"
+    echo "[DEBUG] tr_build=$tr_build" >&2
 
     # 根据版本选择构建系统
     # Transmission 3.00: 使用 cmake (有 CMakeLists.txt)
     # Transmission 4.0+: 使用 autotools (configure.ac + autogen.sh)
     if [[ -f "${tr_src}/CMakeLists.txt" ]] && [[ ! -f "${tr_src}/configure" ]]; then
         info "使用 CMake 构建..."
+        echo "[DEBUG] CMake 构建, tr_src=${tr_src}" >&2
         cmake "${tr_src}" -DCMAKE_INSTALL_PREFIX="${prefix}" \
                  -DCMAKE_BUILD_TYPE=Release \
                  -DENABLE_DAEMON=ON \
                  -DENABLE_CLI=OFF \
                  -DENABLE_GTK=OFF \
                  -DENABLE_MAC=OFF \
-                 -DENABLE_QT=OFF 2>&1 | tail -10
-        make -j$(nproc) 2>&1 | tail -10
-        make install 2>&1 | tail -5
+                 -DENABLE_QT=OFF 2>&1 | tail -20
+        echo "[DEBUG] cmake 退出码: $?" >&2
+        make -j$(nproc) 2>&1 | tail -20
+        echo "[DEBUG] make 退出码: $?" >&2
+        make install 2>&1 | tail -10
+        echo "[DEBUG] make install 退出码: $?" >&2
+        echo "[DEBUG] /usr/local/bin/transmission-daemon:" >&2
+        ls -la /usr/local/bin/transmission* 2>&1 >&2
     elif [[ -f "${tr_src}/autogen.sh" ]] || [[ -f "${tr_src}/configure.ac" ]]; then
         info "使用 Autotools 构建..."
         cd "${tr_src}"
@@ -312,6 +323,7 @@ install_transmission() {
         cd "$tr_build"
     else
         error "未知的构建系统 (无 CMakeLists.txt 或 configure.ac)"
+        ls -la "${tr_src}" >&2
         exit 1
     fi
 
