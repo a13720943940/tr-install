@@ -227,77 +227,51 @@ install_transmission() {
         TR_VERSION=$(git describe --tags 2>/dev/null | sed 's/^v//' | head -1 || echo "trunk")
     else
         info "下载 Transmission-${TR_VERSION}..."
-        local tag_name="v${TR_VERSION}"
-        echo "[DEBUG] tag_name=$tag_name" >&2
-
-        # 方法1: 从 GitHub Releases API 获取真实 tarball URL
-        local api_url="https://api.github.com/repos/transmission/transmission/releases/tags/${tag_name}"
-        local download_url=""
-
-        echo "[DEBUG] 尝试 curl API..." >&2
-        if curl -sfL --max-time 30 -o /tmp/transmission-api.json "$api_url" 2>/dev/null; then
-            echo "[DEBUG] API 请求成功, 解析 JSON..." >&2
-            download_url=$(python3 << 'PYEOF' 2>/dev/null || echo ""
-import json, re
-try:
-    with open('/tmp/transmission-api.json') as f:
-        data = json.load(f)
-    for a in data.get('assets', []):
-        name = a.get('name', '')
-        if re.match(r'transmission-[0-9.]+\.tar\.(xz|gz)', name):
-            print(a['browser_download_url'])
-            break
-except:
-    pass
-PYEOF
-)
-            echo "[DEBUG] download_url=${download_url:-<empty>}" >&2
+        # 3.00 的 tag 不带 v 前缀, 4.0+ 带 v 前缀
+        # 尝试两种 tag 格式, 并优先使用 codeload archive
+        local tag_candidates=()
+        if [[ "${TR_VERSION}" == 3.* ]]; then
+            tag_candidates=("${TR_VERSION}" "v${TR_VERSION}")
         else
-            echo "[DEBUG] curl API 失败" >&2
+            tag_candidates=("v${TR_VERSION}" "${TR_VERSION}")
         fi
 
-        if [[ -n "$download_url" ]]; then
-            echo "[DEBUG] 使用下载链接: $download_url" >&2
-            info "从 GitHub Releases 下载: $(basename "$download_url")"
-            if wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.xz" "$download_url" 2>/dev/null; then
-                tar -xJf "/tmp/transmission-${TR_VERSION}.tar.xz" -C /tmp && tr_src="/tmp/transmission-${TR_VERSION}"
-            elif wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.gz" "$download_url" 2>/dev/null; then
-                tar -xzf "/tmp/transmission-${TR_VERSION}.tar.gz" -C /tmp && tr_src="/tmp/transmission-${TR_VERSION}"
+        local tag_name=""
+        local archive_url=""
+        for t in "${tag_candidates[@]}"; do
+            # 测试 codeload archive 是否存在
+            archive_url="https://codeload.github.com/transmission/transmission/tar.gz/refs/tags/${t}"
+            echo "[DEBUG] 尝试 tag: $t -> $archive_url" >&2
+            if curl -sfL --max-time 15 -o /dev/null -r 0-0 "$archive_url" 2>/dev/null; then
+                tag_name="$t"
+                echo "[DEBUG] 找到可用 tag: $tag_name" >&2
+                break
             fi
+        done
+
+        if [[ -z "$tag_name" ]]; then
+            warn "无法确定 tag 名，默认使用 ${TR_VERSION}"
+            tag_name="${TR_VERSION}"
+            archive_url="https://codeload.github.com/transmission/transmission/tar.gz/refs/tags/${tag_name}"
         fi
 
-        # 方法2: API 失败则尝试直接猜测常见 URL
-        if [[ ! -d "$tr_src" ]]; then
-            echo "[DEBUG] 方法1失败, 尝试直接 URL..." >&2
-            warn "API 获取失败，尝试直接 URL..."
-            for url in \
-                "https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.xz" \
-                "https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.gz"; do
-                echo "[DEBUG] 尝试: $url" >&2
-                local ext="$(echo $url | grep -o 'tar\.[a-z]*' | head -1)"
-                local archive="/tmp/transmission-${TR_VERSION}.${ext}"
-                if wget -q -O "$archive" "$url" 2>/dev/null; then
-                    if [[ "$ext" == "tar.xz" ]]; then
-                        tar -xJf "$archive" -C /tmp || true
-                    else
-                        tar -xzf "$archive" -C /tmp || true
-                    fi
-                    rm -f "$archive"
-                    if [[ -d "/tmp/transmission-${TR_VERSION}" ]]; then
-                        tr_src="/tmp/transmission-${TR_VERSION}"
-                        break
-                    fi
-                fi
-            done
-        fi
-
-        # 方法3: 全量 git clone (最后兜底)
-        if [[ ! -d "$tr_src" ]]; then
-            echo "[DEBUG] 方法2失败, 使用 git clone..." >&2
-            warn "全部下载失败，使用 git clone (可能较慢)..."
-            if git clone "https://github.com/transmission/transmission.git" "$tr_src" 2>&1; then
-                (cd "$tr_src" && git checkout "${tag_name}") || true
+        local archive_file="/tmp/transmission-${TR_VERSION}.tar.gz"
+        info "下载源码: $archive_url"
+        if wget -q --show-progress -O "$archive_file" "$archive_url" 2>/dev/null; then
+            tar -xzf "$archive_file" -C /tmp
+            # codeload 解压后目录名为 transmission-<tag>
+            if [[ -d "/tmp/transmission-${tag_name}" ]]; then
+                tr_src="/tmp/transmission-${tag_name}"
+            elif [[ -d "/tmp/transmission-${TR_VERSION}" ]]; then
+                tr_src="/tmp/transmission-${TR_VERSION}"
+            else
+                # 查找解压后的目录
+                tr_src=$(find /tmp -maxdepth 1 -type d -name "transmission-*" 2>/dev/null | head -1)
             fi
+            echo "[DEBUG] 解压目录: $tr_src" >&2
+        else
+            error "源码下载失败: $archive_url"
+            exit 1
         fi
     fi
 
@@ -308,36 +282,41 @@ PYEOF
 
     cd "$tr_build"
 
-    # Configure
-    if [[ -f "${tr_src}/configure.ac" ]]; then
-        # 4.x 使用 autoreconf
-        if [[ -f "${tr_src}/autogen.sh" ]]; then
-            info "运行 autogen.sh..."
-            (cd "${tr_src}" && bash autogen.sh) || true
-        fi
-
-        CFLAGS="-O2 -march=native" \
-        CXXFLAGS="-O2 -march=native" \
-        "${tr_src}/configure" --prefix="${prefix}" \
-            --disable-daemon 2>&1 | tail -5
-
-        make -j$(nproc)
-        make install
-    else
-        # 旧版 (3.x) 使用 cmake
-        cmake .. -DCMAKE_INSTALL_PREFIX="${prefix}" \
+    # 根据版本选择构建系统
+    # Transmission 3.00: 使用 cmake (有 CMakeLists.txt)
+    # Transmission 4.0+: 使用 autotools (configure.ac + autogen.sh)
+    if [[ -f "${tr_src}/CMakeLists.txt" ]] && [[ ! -f "${tr_src}/configure" ]]; then
+        info "使用 CMake 构建..."
+        cmake "${tr_src}" -DCMAKE_INSTALL_PREFIX="${prefix}" \
                  -DCMAKE_BUILD_TYPE=Release \
                  -DENABLE_DAEMON=ON \
                  -DENABLE_CLI=OFF \
                  -DENABLE_GTK=OFF \
                  -DENABLE_MAC=OFF \
-                 -DENABLE_QT=OFF
-        make -j$(nproc)
-        make install
+                 -DENABLE_QT=OFF 2>&1 | tail -10
+        make -j$(nproc) 2>&1 | tail -10
+        make install 2>&1 | tail -5
+    elif [[ -f "${tr_src}/autogen.sh" ]] || [[ -f "${tr_src}/configure.ac" ]]; then
+        info "使用 Autotools 构建..."
+        cd "${tr_src}"
+        if [[ ! -f "./configure" ]]; then
+            info "运行 autogen.sh..."
+            bash autogen.sh || autoreconf -fi
+        fi
+        CFLAGS="-O2 -march=native" \
+        CXXFLAGS="-O2 -march=native" \
+        ./configure --prefix="${prefix}" \
+            --disable-daemon 2>&1 | tail -10
+        make -j$(nproc) 2>&1 | tail -10
+        make install 2>&1 | tail -5
+        cd "$tr_build"
+    else
+        error "未知的构建系统 (无 CMakeLists.txt 或 configure.ac)"
+        exit 1
     fi
 
     # 清理
-    rm -rf "$tr_src" "/tmp/transmission-${TR_VERSION}.tar.xz"
+    rm -rf "$tr_src" "/tmp/transmission-${TR_VERSION}.tar.gz" "/tmp/transmission-${TR_VERSION}.tar.xz"
 
     info "Transmission ${TR_VERSION} 安装完成"
 }
