@@ -111,9 +111,9 @@ done
 SYSTEM_USER="${TR_USER//[^a-zA-Z0-9_]/}"
 SYSTEM_USER="${SYSTEM_USER:0:32}"
 
-# 默认下载目录 (与 qBittorrent jerry048 脚本保持一致: ~/qbittorrent/Downloads)
+# 默认下载目录 (与 qBittorrent 保持一致: ~/Downloads)
 if [[ -z "$TR_DOWNLOAD_DIR" ]]; then
-    TR_DOWNLOAD_DIR="/home/${SYSTEM_USER}/qbittorrent/Downloads"
+    TR_DOWNLOAD_DIR="/home/${SYSTEM_USER}/Downloads"
 fi
 if [[ -z "$TR_INCOMPLETE_DIR" ]]; then
     TR_INCOMPLETE_DIR="${TR_DOWNLOAD_DIR}/incomplete"
