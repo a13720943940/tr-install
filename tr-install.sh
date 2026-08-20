@@ -227,13 +227,15 @@ install_transmission() {
     else
         info "下载 Transmission-${TR_VERSION}..."
         local tag_name="v${TR_VERSION}"
+        echo "[DEBUG] tag_name=$tag_name" >&2
 
         # 方法1: 从 GitHub Releases API 获取真实 tarball URL
         local api_url="https://api.github.com/repos/transmission/transmission/releases/tags/${tag_name}"
         local download_url=""
 
         if command -v curl &>/dev/null; then
-            download_url=$(curl -sfL --max-time 30 "$api_url" \
+            echo "[DEBUG] API: $api_url" >&2
+            download_url=$(curl -sfL --max-time 30 "$api_url" 2>/dev/null \
                 | python3 -c "
 import sys, json, re
 try:
@@ -241,17 +243,18 @@ try:
     assets = data.get('assets', [])
     for a in assets:
         name = a.get('name', '')
-        if re.match(r'transmission-[\d.]+\.tar\.(xz|gz)', name):
+        if re.match(r'transmission-[0-9.]+\\.tar\\.(xz|gz)', name):
             print(a['browser_download_url'])
             break
     else:
         print('')
 except:
     print('')
-" 2>/dev/null)
+" 2>/dev/null) || download_url=""
         fi
 
         if [[ -n "$download_url" ]]; then
+            echo "[DEBUG] 找到下载链接: $download_url" >&2
             info "从 GitHub Releases 下载: $(basename "$download_url")"
             wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.xz" "$download_url" || \
             wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.gz" "$download_url" 2>/dev/null || true
@@ -291,6 +294,11 @@ except:
             git clone "https://github.com/transmission/transmission.git" "$tr_src"
             (cd "$tr_src" && git checkout "${tag_name}")
         fi
+    fi
+
+    if [[ ! -d "$tr_src" ]]; then
+        error "无法下载 Transmission 源码，请检查网络或尝试手动下载"
+        exit 1
     fi
 
     cd "$tr_build"
