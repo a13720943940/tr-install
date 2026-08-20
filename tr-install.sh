@@ -218,6 +218,7 @@ install_transmission() {
     mkdir -p "$tr_build"
 
     # 下载源码
+    rm -rf "$tr_src"
     if [[ "$TRUNK_BUILD" == "1" ]]; then
         info "从 trunk 克隆源码 (最新版本)..."
         git clone --depth=1 "https://github.com/transmission/transmission.git" "$tr_src"
@@ -232,10 +233,18 @@ install_transmission() {
             tar -xJf "/tmp/transmission-${TR_VERSION}.tar.xz" -C /tmp
             tr_src="/tmp/transmission-${TR_VERSION}"
         else
-            # fallback: 3.00 及以下版本 tarball 路径不同
-            warn "官方 tarball 下载失败，尝试从 Git 克隆..."
-            git clone --depth=1 --branch "${tag_name}" \
-                "https://github.com/transmission/transmission.git" "$tr_src"
+            # fallback: tar.gz 格式
+            warn "官方 tarball 下载失败，尝试 tar.gz 格式..."
+            rm -f "/tmp/transmission-${TR_VERSION}.tar.xz"
+            local fallback_url="https://github.com/transmission/transmission/releases/download/${tag_name}/transmission-${TR_VERSION}.tar.gz"
+            if wget -q --show-progress -O "/tmp/transmission-${TR_VERSION}.tar.gz" "$fallback_url" 2>/dev/null; then
+                tar -xzf "/tmp/transmission-${TR_VERSION}.tar.gz" -C /tmp
+                tr_src="/tmp/transmission-${TR_VERSION}"
+            else
+                warn "备用地址也失败，尝试从 Git 克隆..."
+                git clone --depth=1 --branch "${tag_name}" \
+                    "https://github.com/transmission/transmission.git" "$tr_src"
+            fi
         fi
     fi
 
