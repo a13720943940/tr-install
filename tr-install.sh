@@ -197,7 +197,7 @@ create_user() {
     else
         info "用户 $SYSTEM_USER 已存在，跳过"
     fi
-    # 必须在函数里赋值并设为全局，否则调用者读不到
+    # 必须在函数里赋值，否则调用者读不到
     TR_UID=$(id -u "$SYSTEM_USER")
     TR_GID=$(id -g "$SYSTEM_USER")
 }
@@ -230,7 +230,7 @@ install_transmission() {
         TR_VERSION=$(git describe --tags 2>/dev/null | sed 's/^v//' | head -1 || echo "trunk")
     else
         info "下载 Transmission-${TR_VERSION}..."
-        # 3.00 release tarball 缺少 third-party 子模块, 必须用 git clone --depth=1 --recurse-submodules
+        # 3.00 release tarball 缺少 third-party 子模块, 必须用 git clone --recurse-submodules
         # 3.00 的 tag 不带 v 前缀, 4.0+ 带 v 前缀
         local tag_candidates=()
         if [[ "${TR_VERSION}" == 3.* ]]; then
@@ -253,7 +253,7 @@ install_transmission() {
         fi
 
         info "Git clone (含子模块, 可能较慢)..."
-        GIT_HTTP_VERSION=HTTP/1.1 git clone --depth=1 --recurse-submodules --branch "${tag_name}" \
+        GIT_HTTP_VERSION=HTTP/1.1 git clone --recurse-submodules --depth=1 --branch "${tag_name}" \
             "https://github.com/transmission/transmission.git" "$tr_src" 2>&1 | tail -5
 
         if [[ ! -d "$tr_src" ]]; then
