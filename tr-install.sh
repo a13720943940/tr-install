@@ -204,6 +204,9 @@ create_user() {
     else
         info "用户 $SYSTEM_USER 已存在，跳过"
     fi
+    # 获取 UID/GID (systemd 252 在某些 Debian 12 环境下解析组名失败, 用数字 ID 绕过)
+    TR_UID=$(id -u "$SYSTEM_USER")
+    TR_GID=$(id -g "$SYSTEM_USER")
 }
 
 # ─── 安装依赖 ─────────────────────────────────────────────────────────────────
@@ -536,8 +539,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=${SYSTEM_USER}
-Group=${SYSTEM_USER}
+User=${TR_UID}
+Group=${TR_GID}
 Environment=TRANSMISSION_WEB_HOME=${INSTALL_PREFIX}/share/transmission/public_html
 ExecStart=${INSTALL_PREFIX}/bin/transmission-daemon --foreground --config-dir /home/${SYSTEM_USER}/.config/transmission
 Restart=on-failure
