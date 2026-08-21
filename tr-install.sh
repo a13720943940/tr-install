@@ -14,6 +14,7 @@
 #   -d, --download-dir  下载目录 (默认: /home/<user>/downloads)
 #   -m, --incomplete    未完成下载目录 (默认: /home/<user>/downloads/incomplete)
 #   -q, --tr-version    Transmission 版本 (默认: 4.0.5)
+#   -s, --static        使用预编译静态二进制 (免编译, 秒装)
 #   -v, --verbose       详细输出
 #   -x, --ssl           启用 SSL
 #   -h, --help          显示帮助
@@ -47,6 +48,7 @@ SYSTEM_USER=""
 INSTALL_PREFIX="/usr/local"
 TRUNK_BUILD=0   # 从 trunk 源码编译
 TR_WEB_CONTROL=0  # 安装 TrguiNG 美化界面
+TR_STATIC=0      # 使用预编译静态二进制 (秒装, 免编译)
 
 # ─── 帮助 ─────────────────────────────────────────────────────────────────────
 usage() {
@@ -70,6 +72,7 @@ ${BOLD}可选参数:${NC}
   -b, --bind <地址>        绑定地址 (默认: 0.0.0.0)
   -x, --ssl                启用 SSL (自签名证书)
   -k, --trunk              从 trunk 源码编译 (最新特性)
+  -s, --static             使用预编译静态二进制安装 (秒装, 免编译, 仅 x86_64)
   -w, --web-control        安装 TrguiNG 美化界面 (现代 React Web UI)
   -v, --verbose            显示详细输出
   -h, --help               显示此帮助
@@ -81,6 +84,9 @@ ${BOLD}示例:${NC}
   # 一键在线执行 (与参考脚本格式兼容)
   bash <(wget -qO- https://your-url/tr-install.sh) \\
     -u jalonw -p "13720943940@1q" -P 9091 -t 51413 -q 3.00 -v -x
+
+  # 秒装 (预编译静态二进制, 免编译)
+  bash tr-install.sh -u jalonw -p "13720943940@1q" -s -w
 
 EOF
     exit 0
@@ -101,6 +107,7 @@ while [[ $# -gt 0 ]]; do
         -x|--ssl)           TR_USE_SSL=1;       shift ;;
         -k|--trunk)         TRUNK_BUILD=1;      shift ;;
         -w|--web-control)   TR_WEB_CONTROL=1;   shift ;;  # 保留向后兼容
+        -s|--static)        TR_STATIC=1;        shift ;;
         -v|--verbose)       TR_VERBOSE=1;       shift ;;
         -h|--help)          usage ;;
         *)                  error "未知参数: $1"; usage ;;
@@ -201,10 +208,32 @@ create_user() {
 
 # ─── 安装依赖 ─────────────────────────────────────────────────────────────────
 install_dependencies() {
-    step "安装编译依赖"
+    step "安装依赖"
+
+    if [[ "$TR_STATIC" == "1" ]]; then
+        # 静态二进制模式: 仅安装运行时依赖 + wget
+        case "$OS" in
+            debian)
+                apt-get update -qq
+                apt-get install -y -qq wget ca-certificates libssl3 libevent-2.1-7 \
+                    libcurl4 libminiupnpc17 libnatpmp1 libpsl5 zlib1g >/dev/null 2>&1
+                ;;
+            rhel|centos)
+                yum install -y -q wget ca-certificates openssl-libs libevent \
+                    libcurl miniupnpc >/dev/null 2>&1
+                ;;
+            alpine)
+                apk add --no-cache wget ca-certificates libssl3 libevent libcurl \
+                    miniupnpc libnatpmp zlib >/dev/null 2>&1
+                ;;
+        esac
+        info "运行时依赖安装完成 (免编译)"
+        return 0
+    fi
+
     $PKG_UPDATE
     $PKG_INSTALL $PACKAGES
-    info "依赖安装完成"
+    info "编译依赖安装完成"
 }
 
 # ─── 编译安装 Transmission ────────────────────────────────────────────────────
@@ -315,6 +344,55 @@ install_transmission() {
     rm -rf "$tr_src" "/tmp/transmission-${TR_VERSION}.tar.gz" "/tmp/transmission-${TR_VERSION}.tar.xz"
 
     info "Transmission ${TR_VERSION} 安装完成"
+}
+
+# ─── 预编译静态二进制安装 ────────────────────────────────────────────────────
+# 从 GitHub Release 下载预编译好的 transmission 二进制 (免编译, 秒装)
+# 仅支持 x86_64 + glibc (Debian/Ubuntu)
+install_static() {
+    step "安装预编译 Transmission ${TR_VERSION} 二进制"
+
+    if [[ "${ARCH}" != "x86_64" ]]; then
+        error "预编译二进制目前仅提供 x86_64 架构, 当前: ${ARCH}"
+        error "请去掉 -s 参数, 改用源码编译安装"
+        exit 1
+    fi
+
+    local bin_arch="${ARCH}"
+    local static_tar="/tmp/transmission-${TR_VERSION}-${bin_arch}-debian.tar.gz"
+    local static_url="https://github.com/a13720943940/tr-install/releases/download/bin-${TR_VERSION}-${bin_arch}/transmission-${TR_VERSION}-${bin_arch}-debian.tar.gz"
+
+    info "下载预编译二进制..."
+    [[ "$TR_VERBOSE" == "1" ]] && echo "  URL: $static_url"
+
+    if ! wget -q --no-check-certificate -O "$static_tar" "$static_url"; then
+        error "预编译二进制下载失败"
+        error "可能原因: 该版本未提供预编译包, 或架构不支持 (当前: $bin_arch)"
+        error "可去掉 -s 参数改用源码编译安装"
+        error "或访问 https://github.com/a13720943940/tr-install/releases 查看可用包"
+        exit 1
+    fi
+
+    info "解压到 ${INSTALL_PREFIX}/bin/"
+    tar xzf "$static_tar" -C "${INSTALL_PREFIX}/bin/"
+    chmod +x "${INSTALL_PREFIX}/bin/transmission-daemon" \
+             "${INSTALL_PREFIX}/bin/transmission-remote" \
+             "${INSTALL_PREFIX}/bin/transmission-create" \
+             "${INSTALL_PREFIX}/bin/transmission-edit" \
+             "${INSTALL_PREFIX}/bin/transmission-show" 2>/dev/null || true
+    rm -f "$static_tar"
+
+    # 验证
+    local installed_ver
+    installed_ver=$("${INSTALL_PREFIX}/bin/transmission-daemon" --version 2>&1)
+    info "已安装: $installed_ver"
+
+    # 预编译二进制不含内置 web 界面文件, 建议配合 -w 安装 TrguiNG
+    if [[ "$TR_WEB_CONTROL" != "1" ]]; then
+        warn "预编译二进制不含内置 Web UI, 建议加 -w 参数安装 TrguiNG"
+    fi
+
+    info "Transmission ${TR_VERSION} 预编译安装完成"
 }
 
 # ─── SSL 证书 ─────────────────────────────────────────────────────────────────
@@ -669,7 +747,11 @@ main() {
     create_user
     install_dependencies
     [[ "$TR_USE_SSL" == "1" ]] && generate_ssl
-    install_transmission
+    if [[ "$TR_STATIC" == "1" ]]; then
+        install_static
+    else
+        install_transmission
+    fi
     setup_directories
     generate_settings
     create_systemd_service
