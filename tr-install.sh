@@ -425,12 +425,12 @@ setup_directories() {
     local session_file="${conf_dir}/settings.json"
     if [[ ! -f "$session_file" ]]; then
         touch "$session_file"
-        chown "${SYSTEM_USER}:${SYSTEM_USER}" "$session_file"
+        chown "${TR_UID}:${TR_GID}" "$session_file"
     fi
 
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "$conf_dir"
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "$TR_DOWNLOAD_DIR"
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "$TR_INCOMPLETE_DIR"
+    chown -R "${TR_UID}:${TR_GID}" "$conf_dir"
+    chown -R "${TR_UID}:${TR_GID}" "$TR_DOWNLOAD_DIR"
+    chown -R "${TR_UID}:${TR_GID}" "$TR_INCOMPLETE_DIR"
     info "目录权限配置完成"
 }
 
@@ -521,7 +521,7 @@ ${ssl_opts}
 EOF
 
     chmod 600 "$conf_file"
-    chown "${SYSTEM_USER}:${SYSTEM_USER}" "$conf_file"
+    chown "${TR_UID}:${TR_GID}" "$conf_file"
     info "配置文件写入完成: $conf_file"
 }
 
@@ -638,7 +638,7 @@ install_web_control() {
     fi
 
     # 设置权限
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "${tr_web_dir}" 2>/dev/null || true
+    chown -R "${TR_UID}:${TR_GID}" "${tr_web_dir}" 2>/dev/null || true
     chmod -R 755 "${tr_web_dir}" 2>/dev/null || true
 
     info "✅ TrguiNG Web UI 安装完成"
