@@ -197,6 +197,9 @@ create_user() {
     else
         info "用户 $SYSTEM_USER 已存在，跳过"
     fi
+    # 必须在函数里赋值并设为全局，否则调用者读不到
+    TR_UID=$(id -u "$SYSTEM_USER")
+    TR_GID=$(id -g "$SYSTEM_USER")
 }
 
 # ─── 安装依赖 ─────────────────────────────────────────────────────────────────
