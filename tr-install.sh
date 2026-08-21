@@ -253,13 +253,15 @@ install_transmission() {
         fi
 
         info "Git clone (含子模块, 可能较慢)..."
-        GIT_HTTP_VERSION=HTTP/1.1 git clone --recurse-submodules --depth=1 --branch "${tag_name}" \
+        git clone --depth=1 --branch "${tag_name}" \
             "https://github.com/transmission/transmission.git" "$tr_src" 2>&1 | tail -5
 
         if [[ ! -d "$tr_src" ]]; then
             error "源码下载失败"
             exit 1
         fi
+
+        (cd "$tr_src" && GIT_HTTP_VERSION=HTTP/1.1 git submodule update --init --recursive) 2>&1 || true
     fi
 
     if [[ ! -d "$tr_src" ]]; then
