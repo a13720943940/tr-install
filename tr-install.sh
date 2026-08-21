@@ -222,12 +222,12 @@ install_transmission() {
     rm -rf "$tr_src" /tmp/transmission-api.json /tmp/transmission-*.tar.* 2>/dev/null || true
     if [[ "$TRUNK_BUILD" == "1" ]]; then
         info "从 trunk 克隆源码 (最新版本)..."
-        git clone --depth=1 "https://github.com/transmission/transmission.git" "$tr_src" || true
+        GIT_HTTP_VERSION=HTTP/1.1 git clone --depth=1 "https://github.com/transmission/transmission.git" "$tr_src" || true
         cd "$tr_src" 2>/dev/null || true
         TR_VERSION=$(git describe --tags 2>/dev/null | sed 's/^v//' | head -1 || echo "trunk")
     else
         info "下载 Transmission-${TR_VERSION}..."
-        # 3.00 release tarball 缺少 third-party 子模块, 必须用 git clone --recurse-submodules
+        # 3.00 release tarball 缺少 third-party 子模块, 必须用 git clone --depth=1 --recurse-submodules
         # 3.00 的 tag 不带 v 前缀, 4.0+ 带 v 前缀
         local tag_candidates=()
         if [[ "${TR_VERSION}" == 3.* ]]; then
@@ -250,7 +250,7 @@ install_transmission() {
         fi
 
         info "Git clone (含子模块, 可能较慢)..."
-        git clone --recurse-submodules --depth=1 --branch "${tag_name}" \
+        GIT_HTTP_VERSION=HTTP/1.1 git clone --depth=1 --recurse-submodules --branch "${tag_name}" \
             "https://github.com/transmission/transmission.git" "$tr_src" 2>&1 | tail -5
 
         if [[ ! -d "$tr_src" ]]; then
