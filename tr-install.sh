@@ -204,6 +204,8 @@ create_user() {
     else
         info "用户 $SYSTEM_USER 已存在，跳过"
     fi
+    # 获取 GID 数字 (systemd 252 组名解析 bug, Group=名字 失败)
+    TR_GID=$(id -g "$SYSTEM_USER")
 }
 
 # ─── 安装依赖 ─────────────────────────────────────────────────────────────────
@@ -422,12 +424,12 @@ setup_directories() {
     local session_file="${conf_dir}/settings.json"
     if [[ ! -f "$session_file" ]]; then
         touch "$session_file"
-        chown "${SYSTEM_USER}:${SYSTEM_USER}" "$session_file"
+        chown "${TR_GID}:${TR_GID}" "$session_file"
     fi
 
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "$conf_dir"
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "$TR_DOWNLOAD_DIR"
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "$TR_INCOMPLETE_DIR"
+    chown -R "${TR_GID}:${TR_GID}" "$conf_dir"
+    chown -R "${TR_GID}:${TR_GID}" "$TR_DOWNLOAD_DIR"
+    chown -R "${TR_GID}:${TR_GID}" "$TR_INCOMPLETE_DIR"
     info "目录权限配置完成"
 }
 
@@ -518,7 +520,7 @@ ${ssl_opts}
 EOF
 
     chmod 600 "$conf_file"
-    chown "${SYSTEM_USER}:${SYSTEM_USER}" "$conf_file"
+    chown "${TR_GID}:${TR_GID}" "$conf_file"
     info "配置文件写入完成: $conf_file"
 }
 
@@ -537,7 +539,7 @@ After=network.target
 [Service]
 Type=simple
 User=${SYSTEM_USER}
-Group=${SYSTEM_USER}
+Group=${TR_GID}
 Environment=TRANSMISSION_WEB_HOME=${INSTALL_PREFIX}/share/transmission/public_html
 ExecStart=${INSTALL_PREFIX}/bin/transmission-daemon --foreground --config-dir /home/${SYSTEM_USER}/.config/transmission
 Restart=on-failure
@@ -580,11 +582,11 @@ install_web_control() {
     # 从 GitHub Releases 下载 TrguiNG web 包
     local trguing_zip="/tmp/trguing-web.zip"
     local trguing_tmp="/tmp/trguing-web"
-    local trguing_url="https://github.com/openscopeproject/TrguiNG/releases/latest/download/trguing-web-v1.5.1.zip"
+    local trguing_url="https://github.com/ManuZhu0728/TrguiNG/releases/download/v1.5.1-ee/trguing-web-v1.5.1-ee.zip"
 
     # 尝试获取最新版本下载链接
     local latest_url
-    latest_url=$(curl -sL "https://api.github.com/repos/openscopeproject/TrguiNG/releases/latest" 2>/dev/null | \
+    latest_url=$(curl -sL "https://api.github.com/repos/ManuZhu0728/TrguiNG/releases/latest" 2>/dev/null | \
         python3 -c "import json,sys; d=json.load(sys.stdin); [print(a[\'browser_download_url\']) for a in d.get(\'assets\',[]) if \'web\' in a[\'name\'].lower()]" 2>/dev/null | head -1)
     [[ -n "$latest_url" ]] && trguing_url="$latest_url"
 
@@ -629,13 +631,13 @@ install_web_control() {
         rm -rf "$trguing_tmp" "$trguing_zip"
     else
         warn "TrguiNG 下载失败，请手动下载并解压到 $tr_web_dir"
-        warn "下载地址: https://github.com/openscopeproject/TrguiNG/releases"
+        warn "下载地址: https://github.com/ManuZhu0728/TrguiNG/releases"
         rm -rf "$trguing_tmp" "$trguing_zip"
         return 0
     fi
 
     # 设置权限
-    chown -R "${SYSTEM_USER}:${SYSTEM_USER}" "${tr_web_dir}" 2>/dev/null || true
+    chown -R "${TR_GID}:${TR_GID}" "${tr_web_dir}" 2>/dev/null || true
     chmod -R 755 "${tr_web_dir}" 2>/dev/null || true
 
     info "✅ TrguiNG Web UI 安装完成"
