@@ -670,17 +670,25 @@ start_service() {
     step "启动 Transmission 服务"
 
     systemctl enable transmission.service
-    systemctl restart transmission.service
 
-    sleep 3
+    # 重试 3 次 (规避 systemd "Failed to determine group credentials" 间歇性问题)
+    local max_retries=3
+    local attempt=1
+    while [[ $attempt -le $max_retries ]]; do
+        systemctl restart transmission.service
+        sleep 3
+        if systemctl is-active --quiet transmission.service; then
+            info "✅ Transmission 服务已启动并设置开机自启"
+            return 0
+        fi
+        warn "第 ${attempt}/${max_retries} 次启动失败，重试中..."
+        attempt=$((attempt + 1))
+        sleep 2
+    done
 
-    if systemctl is-active --quiet transmission.service; then
-        info "✅ Transmission 服务已启动并设置开机自启"
-    else
-        error "服务启动失败，请检查日志:"
-        journalctl -u transmission -n 20 --no-pager
-        exit 1
-    fi
+    error "服务启动失败，请检查日志:"
+    journalctl -u transmission -n 20 --no-pager
+    exit 1
 }
 
 # ─── 完成摘要 ─────────────────────────────────────────────────────────────────
