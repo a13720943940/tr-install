@@ -204,7 +204,8 @@ create_user() {
     else
         info "用户 $SYSTEM_USER 已存在，跳过"
     fi
-    # 获取 GID 数字 (systemd 252 组名解析 bug, Group=名字 失败)
+    # 获取 UID/GID 数字 (systemd 252 组名/用户名解析 bug, 用数字 ID 绕过)
+    TR_UID=$(id -u "$SYSTEM_USER")
     TR_GID=$(id -g "$SYSTEM_USER")
 }
 
@@ -538,7 +539,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=${SYSTEM_USER}
+User=${TR_UID}
 Group=${TR_GID}
 Environment=TRANSMISSION_WEB_HOME=${INSTALL_PREFIX}/share/transmission/public_html
 ExecStart=${INSTALL_PREFIX}/bin/transmission-daemon --foreground --config-dir /home/${SYSTEM_USER}/.config/transmission
